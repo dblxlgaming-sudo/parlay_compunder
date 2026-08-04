@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parlay Compounder — Triple Threat</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root{
+    --bg: #0b0e11;
+    --panel: #12161b;
+    --panel-2: #171c22;
+    --line: #232a32;
+    --text: #e7ebee;
+    --sub: #8b96a3;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', sans-serif;
+    --pos: #3ddc84;
+    --neg: #ff5c5c;
+    --amber: #f4b942;
+    --accent: #4d8dff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    padding:32px 20px 80px; min-height:100vh;
+  }
+  .wrap{max-width:980px; margin:0 auto;}
+
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--sub); margin-bottom:8px;
+  }
+  h1{font-size:26px; font-weight:800; margin:0 0 6px; letter-spacing:-.01em;}
+  .sub{color:var(--sub); font-size:14px; max-width:640px; line-height:1.5;}
+
+  .legs{display:flex; flex-direction:column; gap:10px; margin:24px 0 14px;}
+  .leg{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; display:grid; grid-template-columns: 1fr 110px 110px 145px 32px;
+    gap:12px; align-items:end;
+  }
+  .field{display:flex; flex-direction:column; gap:6px;}
+  .field label{font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:.08em; font-family:var(--mono);}
+  .field input{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+    color:var(--text); font-family:var(--mono); font-size:14px; padding:8px 10px; width:100%;
+  }
+  .field input:focus{outline:none; border-color:var(--accent);}
+  .field.desc input{font-family:var(--sans); font-size:13.5px;}
+  .leg-edge{font-family:var(--mono); font-size:13px; text-align:right; padding-bottom:9px;}
+  .leg-edge.pos{color:var(--pos);}
+  .leg-edge.neg{color:var(--neg);}
+  .rm{
+    background:none; border:1px solid var(--line); color:var(--sub); border-radius:6px;
+    width:32px; height:34px; cursor:pointer; font-size:16px; line-height:1;
+  }
+  .rm:hover{border-color:var(--neg); color:var(--neg);}
+
+  .addrow{
+    background:none; border:1px dashed var(--line); color:var(--sub); border-radius:10px;
+    padding:12px; width:100%; cursor:pointer; font-family:var(--mono); font-size:12.5px;
+    letter-spacing:.05em; text-transform:uppercase;
+  }
+  .addrow:hover{border-color:var(--accent); color:var(--accent);}
+
+  .import-panel{
+    margin:14px 0 0; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px;
+  }
+  .import-panel summary{cursor:pointer; color:var(--sub); font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.08em;}
+  .import-help{font-size:12px; color:var(--sub); line-height:1.5; margin:12px 0 8px;}
+  .import-panel textarea{width:100%; min-height:90px; resize:vertical; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text); padding:10px; font:12px/1.45 var(--mono);}
+  .import-actions{display:flex; align-items:center; gap:10px; margin-top:8px;}
+  .primary{background:var(--accent); border:0; color:#fff; border-radius:6px; padding:9px 12px; cursor:pointer; font-weight:700;}
+  .import-status{font-size:12px; color:var(--sub);}
+  .error{color:var(--neg)!important;}
+  .section{margin-top:22px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px;}
+  .section-head{display:flex; justify-content:space-between; gap:14px; align-items:flex-start; margin-bottom:14px;}
+  .section-title{font-size:16px; font-weight:700;}
+  .section-copy{font-size:12px; color:var(--sub); line-height:1.5; margin-top:4px; max-width:700px;}
+  .controls{display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:12px 0;}
+  .control{display:flex; flex-direction:column; gap:5px;}
+  .control label{font:10.5px var(--mono); color:var(--sub); text-transform:uppercase; letter-spacing:.07em;}
+  .control input,.control select{background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text); padding:8px 9px; font:12px var(--mono);}
+  .control input{width:110px;}
+  .candidate-tools{display:flex; gap:10px; margin:10px 0;}
+  .candidate-tools input{flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; color:var(--text); padding:9px 10px;}
+  .secondary{background:transparent; border:1px solid var(--line); color:var(--text); border-radius:6px; padding:8px 11px; cursor:pointer;}
+  .secondary:hover{border-color:var(--accent); color:var(--accent);}
+  .candidate-list{display:grid; grid-template-columns:1fr 1fr; gap:7px; max-height:310px; overflow:auto;}
+  .candidate{display:grid; grid-template-columns:22px 1fr auto; gap:8px; align-items:center; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:9px;}
+  .candidate-name{font-size:12.5px;}
+  .candidate-meta{font:10.5px var(--mono); color:var(--sub); margin-top:3px;}
+  .candidate-edge{font:12px var(--mono); color:var(--pos);}
+  .candidate-edge.neg{color:var(--neg);}
+  .suggestions{display:flex; flex-direction:column; gap:8px; margin-top:12px;}
+  .suggestion{display:grid; grid-template-columns:64px 1fr 90px 100px; gap:10px; align-items:center; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:11px;}
+  .grade{font:700 10.5px var(--mono); letter-spacing:.04em; text-transform:uppercase; color:var(--amber);}
+  .suggestion-title{font-size:12.5px; line-height:1.4;}
+  .suggestion-meta{font:10.5px var(--mono); color:var(--sub); margin-top:4px;}
+  .suggestion-stat{font:12px var(--mono); text-align:right;}
+  .guidance{margin-top:14px; border:1px solid var(--line); border-radius:10px; padding:16px; background:var(--panel);}
+  .guidance-top{display:flex; justify-content:space-between; gap:12px; align-items:center;}
+  .guidance-badge{font:700 12px var(--mono); padding:7px 9px; border-radius:6px; color:#0b0e11; background:var(--amber);}
+  .guidance-text{font-size:13px; color:var(--sub); line-height:1.5; margin-top:10px;}
+  .warning-list{margin:10px 0 0; color:#d9b877; font-size:12px; line-height:1.55;}
+  .impact-table{width:100%; border-collapse:collapse; margin-top:12px; font-size:12px;}
+  .impact-table th{font:10px var(--mono); color:var(--sub); text-transform:uppercase; text-align:left; padding:7px; border-bottom:1px solid var(--line);}
+  .impact-table td{padding:8px 7px; border-bottom:1px solid #1a1f25;}
+  .impact-table td:not(:first-child),.impact-table th:not(:first-child){text-align:right;}
+  .tiny{font:10.5px var(--mono); color:var(--sub);}
+  .empty{padding:18px; text-align:center; color:var(--sub); font-size:12px; border:1px dashed var(--line); border-radius:8px;}
+
+  .stake-row{
+    display:flex; align-items:center; gap:12px; margin:22px 0 4px;
+    padding:12px 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  }
+  .stake-row label{font-family:var(--mono); font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.08em;}
+  .stake-row input{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+    color:var(--text); font-family:var(--mono); font-size:14px; padding:6px 10px; width:100px;
+  }
+  .sizing-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:10px;}
+  .sizing-result{margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .size-box{background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:13px;}
+  .size-box .label{font:10.5px var(--mono); color:var(--sub); text-transform:uppercase; letter-spacing:.07em;}
+  .size-box .value{font:700 21px var(--mono); margin-top:7px;}
+  .size-note{font-size:11.5px; color:var(--sub); line-height:1.45; margin-top:7px;}
+
+  .results{margin-top:26px;}
+  .grid{display:grid; grid-template-columns: repeat(4, 1fr); gap:10px;}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px;
+  }
+  .card .label{font-family:var(--mono); font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px;}
+  .card .val{font-family:var(--mono); font-size:24px; font-weight:600; letter-spacing:-.02em;}
+  .card .val.pos{color:var(--pos);}
+  .card .val.neg{color:var(--neg);}
+  .card .val.amber{color:var(--amber);}
+  .card .note{font-size:11.5px; color:var(--sub); margin-top:6px; line-height:1.4;}
+
+  .miss-panel{
+    margin-top:14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px;
+  }
+  .miss-title{font-family:var(--mono); font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px;}
+  .bars{display:flex; flex-direction:column; gap:10px;}
+  .bar-row{display:grid; grid-template-columns: 150px 1fr 70px; align-items:center; gap:12px;}
+  .bar-row .bl{font-size:12.5px; color:var(--sub);}
+  .bar-track{height:10px; background:var(--panel-2); border-radius:5px; overflow:hidden; border:1px solid var(--line);}
+  .bar-fill{height:100%; border-radius:5px;}
+  .bar-row .bv{font-family:var(--mono); font-size:13px; text-align:right;}
+
+  .miss-legs{margin-top:16px; padding-top:14px; border-top:1px solid var(--line);}
+  .miss-legs .mlabel{font-family:var(--mono); font-size:10.5px; color:var(--sub); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px;}
+  .mleg-row{display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; color:var(--sub); border-bottom:1px solid #1a1f25;}
+  .mleg-row:last-child{border-bottom:none;}
+  .mleg-row span.who{color:var(--text);}
+  .mleg-row span.pct{font-family:var(--mono); color:var(--amber);}
+
+  .caveat{
+    margin-top:18px; padding:14px 16px; background:#171410; border:1px solid #3a2c14;
+    border-radius:10px; font-size:12.5px; color:#d9b877; line-height:1.55;
+  }
+  .caveat b{color:#f4b942;}
+  .invalid{border-color:var(--neg)!important;}
+  @media (max-width:760px){
+    body{padding:20px 12px 60px;}
+    .leg{grid-template-columns:1fr 1fr;}
+    .field.desc{grid-column:1/-1;}
+    .rm{grid-column:2; justify-self:end;}
+    .grid{grid-template-columns:1fr 1fr;}
+    .bar-row{grid-template-columns:115px 1fr 58px; gap:8px;}
+    .candidate-list{grid-template-columns:1fr;}
+    .suggestion{grid-template-columns:58px 1fr;}
+    .suggestion-stat{text-align:left;}
+    .sizing-grid{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width:440px){.grid,.sizing-result{grid-template-columns:1fr;}.sizing-grid{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Triple Threat / Bet Sizing</div>
+    <h1>Parlay Builder & Combination Lab</h1>
+    <div class="sub">Build your own 2–6 leg slip or import Market Edge View and compare ranked combinations. Every label is driven by visible probability, edge, fragility, and correlation rules.</div>
+  </header>
+
+  <details class="import-panel" open>
+    <summary>1. Import candidate pool from Market Edge View</summary>
+    <div class="import-help">The calculator automatically loads the published Google Sheet feed. Use Refresh after bookmaker odds or model values change.</div>
+    <div class="import-actions" style="margin-bottom:10px"><button class="primary" id="refreshFeed">Refresh Google Sheet</button><span class="import-status" id="feedStatus">Waiting to load…</span></div>
+  </details>
+
+  <div class="section" id="poolSection">
+    <div class="section-head"><div><div class="section-title">2. Candidate Pool</div><div class="section-copy">Check up to six legs to build your own parlay. Filter the pool without deleting candidates.</div></div><div class="tiny" id="poolCount">0 candidates</div></div>
+    <div class="candidate-tools"><input id="candidateSearch" type="search" placeholder="Search player, pick, market, or MatchID"><button class="secondary" id="clearSelection">Clear selection</button></div>
+    <div class="candidate-list" id="candidateList"><div class="empty">Paste Market Edge View above to create a candidate pool.</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><div><div class="section-title">3. Find Combinations</div><div class="section-copy">Ranks the top 25 combinations for an exact leg count. The analyzer uses at most the top 22 eligible candidates by adjusted individual edge so the page stays responsive.</div></div></div>
+    <div class="controls">
+      <div class="control"><label>Legs</label><select id="comboSize"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></div>
+      <div class="control"><label>Min breakeven edge</label><input id="minEdge" type="number" value="0" step="0.5"><span class="tiny">raw model probability minus sportsbook breakeven</span></div>
+      <div class="control"><label>Model trust</label><select id="modelTrust"><option value="1">100% raw</option><option value="0.75" selected>75% balanced</option><option value="0.5">50% conservative</option></select></div>
+      <div class="control"><label>Same match</label><select id="sameMatch"><option value="exclude" selected>Exclude</option><option value="review">Include + flag</option></select></div>
+      <div class="control"><label>Market mix</label><select id="marketMix"><option value="any" selected>Any markets</option><option value="mixed">Mixed markets</option><option value="ML">ML only</option><option value="Spread">Spreads only</option><option value="Total">Totals only</option></select></div>
+      <div class="control"><label>Sort results</label><select id="comboSort"><option value="score" selected>Balanced score</option><option value="hit">Highest adjusted hit</option><option value="roi">Highest adjusted ROI</option><option value="fragility">Lowest miss-one/win</option></select></div>
+      <div class="control"><label>Result diversity</label><select id="resultDiversity"><option value="diverse" selected>Diversified</option><option value="pure">Pure ranking</option></select></div>
+      <div class="control"><label>Per page</label><select id="resultsPerPage"><option>5</option><option selected>6</option><option>7</option></select></div>
+      <button class="primary" id="findCombos">Rank combinations</button>
+    </div>
+    <div class="tiny">Adjusted probability = no-vig probability + Model Trust × (model probability − no-vig probability). This is a transparent stress test, not historical calibration.</div>
+    <div class="suggestions" id="suggestions"><div class="empty">Import candidates, choose a leg count, then rank combinations.</div></div>
+    <div class="import-actions" style="justify-content:space-between"><button class="secondary" id="prevCombos">← Previous</button><span class="tiny" id="comboPageStatus"></span><button class="secondary" id="nextCombos">Next →</button></div>
+  </div>
+
+  <div class="section-head" style="margin-top:26px"><div><div class="section-title">4. My Parlay</div><div class="section-copy">Select candidates above or use a ranked suggestion. Odds and probabilities come only from the live Market Edge feed. Maximum six.</div></div></div>
+
+  <div class="legs" id="legs"></div>
+  <div style="display:flex;justify-content:flex-end"><button class="secondary" id="clearSlip">Clear slip</button></div>
+
+  <div class="stake-row">
+    <label>Stake ($)</label>
+    <input type="number" id="stake" value="100" min="0" step="10">
+  </div>
+
+  <div class="section" style="margin-top:10px">
+    <div class="section-head"><div><div class="section-title">Parlay Sizing</div><div class="section-copy">Stake remains what you plan to wager. Recommended size is a separate risk estimate based on adjusted probability and fractional Kelly, limited by your maximum-units setting.</div></div></div>
+    <div class="sizing-grid">
+      <div class="control"><label>Bankroll ($)</label><input id="bankroll" type="number" value="1000" min="0" step="100"></div>
+      <div class="control"><label>One unit ($)</label><input id="unitSize" type="number" value="10" min="0.01" step="1"></div>
+      <div class="control"><label>Kelly fraction</label><select id="kellyFraction"><option value="0.125">⅛ Kelly</option><option value="0.25" selected>¼ Kelly</option><option value="0.5">½ Kelly</option></select></div>
+      <div class="control"><label>Maximum units</label><input id="maxUnits" type="number" value="1" min="0" max="10" step="0.25"></div>
+    </div>
+    <div class="sizing-result">
+      <div class="size-box"><div class="label">Suggested parlay size</div><div class="value" id="recommendedSize">—</div><div class="size-note" id="recommendedUnits">Complete a valid slip to calculate.</div></div>
+      <div class="size-box"><div class="label">Your entered stake</div><div class="value" id="actualStakeSize">—</div><div class="size-note" id="stakeComparison"></div></div>
+    </div>
+    <div class="tiny" style="margin-top:10px">Sizing is a mathematical risk estimate, not a guarantee. It assumes your adjusted probability is reliable; inaccurate probabilities can make Kelly sizing too aggressive.</div>
+  </div>
+
+  <div class="results">
+    <div class="grid">
+      <div class="card">
+        <div class="label">Combined Odds</div>
+        <div class="val" id="oddsCombined">—</div>
+        <div class="note" id="decCombined"></div>
+      </div>
+      <div class="card">
+        <div class="label">Breakeven %</div>
+        <div class="val amber" id="beCombined">—</div>
+        <div class="note">Win rate needed to break even at these odds</div>
+      </div>
+      <div class="card">
+        <div class="label">Model Win Prob</div>
+        <div class="val" id="probCombined">—</div>
+        <div class="note">Product of leg probabilities (assumes independence)</div>
+      </div>
+      <div class="card">
+        <div class="label">Edge</div>
+        <div class="val" id="edgeCombined">—</div>
+        <div class="note" id="edgeNote"></div>
+      </div>
+    </div>
+
+    <div class="miss-panel">
+      <div class="miss-title">Outcome distribution</div>
+      <div class="bars" id="bars"></div>
+      <div class="miss-legs">
+        <div class="mlabel">If it misses by exactly one leg, most likely culprit</div>
+        <div id="missLegs"></div>
+      </div>
+    </div>
+
+    <div class="guidance" id="guidance">
+      <div class="guidance-top"><div><div class="miss-title" style="margin:0">Slip guidance</div></div><div class="guidance-badge" id="guidanceBadge">—</div></div>
+      <div class="guidance-text" id="guidanceText">Add valid legs to analyze the slip.</div>
+      <div class="warning-list" id="warningList"></div>
+      <div class="miss-legs"><div class="mlabel">What changes if one leg is removed?</div><div id="impactAnalysis"></div></div>
+    </div>
+
+    <div class="caveat">
+      <b>Independence assumption:</b> this treats every leg as statistically independent. If two legs share a match, player, weather pattern, or other driver (for example, ML + Total in the same match), the true joint probabilities can be higher or lower than the simple product. Treat these results as an independence estimate, not a floor, ceiling, or exact forecast.
+    </div>
+  </div>
+</div>
+
+<script type="text/plain" id="legacy-calculator-code">
+const legsEl = document.getElementById('legs');
+const stakeEl = document.getElementById('stake');
+const STORAGE_KEY = 'triple-threat-parlay-v2';
+let legs = loadState() || [
+  {desc:'Leg 1', odds:-150, prob:65},
+  {desc:'Leg 2', odds:120, prob:48},
+];
+
+function loadState(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && Array.isArray(saved.legs) && saved.legs.length) {
+      stakeEl.value = Number.isFinite(saved.stake) ? saved.stake : 100;
+      return saved.legs.slice(0, 20);
+    }
+  } catch (_) {}
+  return null;
+}
+function saveState(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({legs, stake:Number(stakeEl.value)||0})); } catch (_) {}
+}
+
+function americanToDecimal(o){
+  o = Number(o);
+  if (!isFinite(o) || o===0 || (o>-100 && o<100)) return NaN;
+  return o > 0 ? 1 + o/100 : 1 + 100/Math.abs(o);
+}
+function decimalToAmerican(d){
+  if (!isFinite(d) || d<=1) return NaN;
+  return d < 2 ? -Math.round(100/(d-1)) : Math.round((d-1)*100);
+}
+function probabilityToAmerican(p){
+  p = Number(p);
+  if (!isFinite(p) || p<=0 || p>=1) return NaN;
+  return p >= .5 ? -Math.round(100*p/(1-p)) : Math.round(100*(1-p)/p);
+}
+function fmtAmerican(n){
+  if (!isFinite(n)) return '—';
+  n = Math.round(n);
+  return (n>0?'+':'') + n;
+}
+function pct(x, d=1){ return isFinite(x) ? (x*100).toFixed(d)+'%' : '—'; }
+function esc(value){
+  return String(value ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+function parsePercent(value){
+  const raw = String(value ?? '').trim().replace(/,/g,'');
+  if (!raw) return NaN;
+  const n = Number(raw.replace('%',''));
+  if (!isFinite(n)) return NaN;
+  return raw.includes('%') || n>1 ? n/100 : n;
+}
+
+function render(){
+  legsEl.innerHTML = '';
+  legs.forEach((leg, i)=>{
+    const dec = americanToDecimal(leg.odds);
+    const be = isFinite(dec) ? 1/dec : NaN;
+    const prob = Number(leg.prob)/100;
+    const edge = prob - be;
+    const row = document.createElement('div');
+    row.className = 'leg';
+    row.innerHTML = `
+      <div class="field desc">
+        <label>Description</label>
+        <input type="text" data-i="${i}" data-k="desc" value="${esc(leg.desc)}">
+      </div>
+      <div class="field">
+        <label>Odds (US)</label>
+        <input class="${isFinite(dec)?'':'invalid'}" type="number" data-i="${i}" data-k="odds" value="${esc(leg.odds)}" step="5">
+      </div>
+      <div class="field">
+        <label>Model Prob %</label>
+        <input class="${prob>0&&prob<1?'':'invalid'}" type="number" data-i="${i}" data-k="prob" value="${esc(leg.prob)}" step="0.1" min="0.1" max="99.9">
+      </div>
+      <div class="field">
+        <label>BE / leg edge</label>
+        <input type="text" value="${pct(be)} / ${isFinite(edge)?(edge>=0?'+':'')+pct(edge):'—'}" disabled>
+      </div>
+      <div></div>
+    `;
+    legsEl.appendChild(row);
+
+    row.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('input', (e)=>{
+        const idx = +e.target.dataset.i, key = e.target.dataset.k;
+        if(!key) return;
+        legs[idx][key] = key==='desc' ? e.target.value : parseFloat(e.target.value);
+        saveState(); compute();
+      });
+      if (inp.dataset.k && inp.dataset.k!=='desc') inp.addEventListener('change', render);
+    });
+
+    const rm = document.createElement('button');
+    rm.className='rm'; rm.textContent='×'; rm.setAttribute('aria-label',`Remove ${leg.desc || `leg ${i+1}`}`);
+    rm.addEventListener('click', ()=>{
+      legs.splice(i,1);
+      render(); compute();
+    });
+    row.lastElementChild.replaceWith(rm);
+  });
+  compute();
+}
+
+function compute(){
+  saveState();
+  const decs = legs.map(l=>americanToDecimal(l.odds));
+  const probs = legs.map(l=>Number(l.prob)/100);
+  const valid = legs.length>0 && decs.every(Number.isFinite) && probs.every(p=>p>0&&p<1);
+  if (!valid){
+    ['oddsCombined','beCombined','probCombined','edgeCombined'].forEach(id=>document.getElementById(id).textContent='—');
+    document.getElementById('decCombined').textContent = legs.length ? 'Fix highlighted leg inputs' : 'Add at least one leg';
+    document.getElementById('edgeNote').textContent='';
+    document.getElementById('bars').innerHTML='';
+    document.getElementById('missLegs').innerHTML='';
+    return;
+  }
+  const stake = parseFloat(stakeEl.value)||0;
+
+  const combinedDec = decs.reduce((a,b)=>a*b,1);
+  const combinedBE = 1/combinedDec;
+  const combinedProb = probs.reduce((a,b)=>a*b,1);
+  const combinedEdge = combinedProb - combinedBE;
+  const combinedAmerican = decimalToAmerican(combinedDec);
+  const profit = stake*(combinedDec-1);
+  const returnAmount = stake*combinedDec;
+  const ev = stake*(combinedProb*combinedDec - 1);
+
+  document.getElementById('oddsCombined').textContent = fmtAmerican(combinedAmerican);
+  document.getElementById('decCombined').textContent = `${combinedDec.toFixed(2)} decimal · $${profit.toFixed(2)} profit / $${returnAmount.toFixed(2)} return`;
+  document.getElementById('beCombined').textContent = pct(combinedBE);
+  document.getElementById('probCombined').textContent = pct(combinedProb);
+  const edgeEl = document.getElementById('edgeCombined');
+  edgeEl.textContent = (combinedEdge>=0?'+':'') + pct(combinedEdge);
+  edgeEl.className = 'val ' + (combinedEdge>=0?'pos':'neg');
+  document.getElementById('edgeNote').textContent = `EV: ${ev>=0?'+':''}$${ev.toFixed(2)} per $${stake.toFixed(0)} staked`;
+
+  // outcome distribution: win all, miss by exactly one, miss by two+
+  const pAll = combinedProb;
+  let pExactlyOne = 0;
+  const missContrib = [];
+  probs.forEach((p,i)=>{
+    const contrib = (1-p) * (pAll/p);
+    pExactlyOne += contrib;
+    missContrib.push({desc: legs[i].desc || `Leg ${i+1}`, p: contrib});
+  });
+  const pTwoPlus = Math.max(0, 1 - pAll - pExactlyOne);
+
+  const bars = document.getElementById('bars');
+  const rows = [
+    {label:'Hit every leg', v:pAll, color:'var(--pos)'},
+    {label:'Miss by exactly one leg', v:pExactlyOne, color:'var(--amber)'},
+    {label:'Miss by 2+ legs', v:pTwoPlus, color:'var(--neg)'},
+  ];
+  bars.innerHTML = rows.map(r=>`
+    <div class="bar-row">
+      <div class="bl">${esc(r.label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.v*100).toFixed(1)}%; background:${r.color};"></div></div>
+      <div class="bv">${pct(r.v)}</div>
+    </div>
+  `).join('');
+
+  missContrib.sort((a,b)=>b.p-a.p);
+  const totalMiss = missContrib.reduce((a,b)=>a+b.p,0) || 1;
+  document.getElementById('missLegs').innerHTML = missContrib.map(m=>`
+    <div class="mleg-row"><span class="who">${esc(m.desc)}</span><span class="pct">${pct(m.p/totalMiss)} of one-leg misses</span></div>
+  `).join('');
+}
+
+document.getElementById('addLeg').addEventListener('click', ()=>{
+  if (legs.length>=20) return;
+  legs.push({desc:`Leg ${legs.length+1}`, odds:-110, prob:55});
+  render();
+});
+stakeEl.addEventListener('input', compute);
+
+document.getElementById('importRows').addEventListener('click', ()=>{
+  const status = document.getElementById('importStatus');
+  const lines = document.getElementById('bulkPaste').value.split(/\r?\n/).filter(line=>line.trim());
+  const imported = [];
+  for (const line of lines) {
+    const cols = line.split('\t').map(v=>v.trim());
+    if (cols.length<5 || /^market$/i.test(cols[0])) continue;
+    const market = cols[0], pick = cols[1];
+    const be = parsePercent(cols[2]), model = parsePercent(cols[4]);
+    const odds = probabilityToAmerican(be);
+    if (!pick || !isFinite(odds) || !(model>0&&model<1)) continue;
+    imported.push({desc:`${market}: ${pick}`, odds, prob:Number((model*100).toFixed(2))});
+  }
+  if (!imported.length) {
+    status.textContent='No valid rows found. Copy Market through Model Prob (D:H).';
+    status.className='import-status error';
+    return;
+  }
+  legs = imported.slice(0,20);
+  status.textContent=`Imported ${legs.length} leg${legs.length===1?'':'s'}.`;
+  status.className='import-status';
+  render();
+});
+
+render();
+</script>
+<script src="parlay-lab.js"></script>
+</body>
+</html>
