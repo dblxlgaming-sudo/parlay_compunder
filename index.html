@@ -195,9 +195,13 @@
   </details>
 
   <div class="section" id="poolSection">
-    <div class="section-head"><div><div class="section-title">2. Candidate Pool</div><div class="section-copy">Check up to six legs to build your own parlay. Filter the pool without deleting candidates.</div></div><div class="tiny" id="poolCount">0 candidates</div></div>
-    <div class="candidate-tools"><input id="candidateSearch" type="search" placeholder="Search player, pick, market, or MatchID"><button class="secondary" id="clearSelection">Clear selection</button></div>
-    <div class="candidate-list" id="candidateList"><div class="empty">Paste Market Edge View above to create a candidate pool.</div></div>
+    <div class="section-head"><div><div class="section-title">2. Candidate Pool</div><div class="section-copy">Choose one slate date, then check up to six legs. Candidates and ranked combinations never mix dates.</div></div><div class="tiny" id="poolCount">0 candidates</div></div>
+    <div class="controls" style="margin-top:0">
+      <div class="control"><label>Slate date</label><select id="slateDate"></select></div>
+      <div class="control" style="flex:1"><label>Search selected slate</label><input id="candidateSearch" type="search" placeholder="Search player, pick, market, tournament, or MatchID" style="width:100%"></div>
+      <button class="secondary" id="clearSelection">Clear selection</button>
+    </div>
+    <div class="candidate-list" id="candidateList"><div class="empty">Loading the live Market Edge feed…</div></div>
   </div>
 
   <div class="section">
