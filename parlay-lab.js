@@ -9,6 +9,7 @@ let lastSuggestions = [];
 let comboPage = 0;
 let evaluatedCombinationCount = 0;
 let passingCombinationCount = 0;
+let selectedSlateDate = '';
 
 function finite(v){ return Number.isFinite(Number(v)); }
 function clamp(v,min,max){ return Math.min(max,Math.max(min,v)); }
@@ -97,10 +98,34 @@ function parseCSV(text){
   row.push(cell);if(row.some(v=>v!==''))rows.push(row);return rows;
 }
 
+function normalizeSheetDate(value){
+  const raw=String(value??'').trim();
+  const match=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(!match)return '';
+  return `${match[3]}-${match[1].padStart(2,'0')}-${match[2].padStart(2,'0')}`;
+}
+
+function formatSlateDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return value||'Unknown date';
+  const [y,m,d]=value.split('-').map(Number);
+  return new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'}).format(new Date(y,m-1,d));
+}
+
+function populateSlateDates(){
+  const select=document.getElementById('slateDate');
+  const dates=[...new Set(candidates.map(c=>c.eventDate).filter(Boolean))].sort();
+  if(!dates.length){selectedSlateDate='';select.innerHTML='<option value="">No dated slates</option>';return;}
+  const today=new Date(),todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const preferred=dates.includes(selectedSlateDate)?selectedSlateDate:(dates.includes(todayKey)?todayKey:(dates.find(d=>d>=todayKey)||dates[dates.length-1]));
+  selectedSlateDate=preferred;
+  select.innerHTML=dates.map(d=>`<option value="${d}" ${d===preferred?'selected':''}>${esc(formatSlateDate(d))}</option>`).join('');
+}
+
 function setCandidatePool(parsed){
   const unique=[],seen=new Set();
   for(const c of parsed){const key=c.id.toLowerCase();if(!seen.has(key)){seen.add(key);unique.push(c);}}
   candidates=unique;
+  populateSlateDates();
   legs=legs.map(l=>{
     if(l.sourceId){const current=candidates.find(c=>c.id===l.sourceId);return current?candidateToLeg(current):null;}
     if(hasURLLegs){
@@ -108,7 +133,7 @@ function setCandidatePool(parsed){
       return current?candidateToLeg(current):l;
     }
     return null;
-  }).filter(Boolean).slice(0,6);
+  }).filter(l=>l&&l.eventDate===selectedSlateDate).slice(0,6);
   saveState();renderCandidates();renderLegs();
   return unique.length;
 }
@@ -122,8 +147,16 @@ async function loadPublishedFeed(){
     const separator=feed.includes('?')?'&':'?';
     const response=await fetch(`${feed}${separator}_=${Date.now()}`,{cache:'no-store'});
     if(!response.ok)throw new Error(`Google Sheet returned ${response.status}.`);
-    const rows=parseCSV(await response.text()),parsed=[];
-    rows.slice(1).forEach((row,i)=>{const c=parseCandidateLine(row.join('\t'),i);if(c)parsed.push(c);});
+    const rows=parseCSV(await response.text()),parsed=[],metaByMatch=new Map();
+    rows.slice(1).forEach(row=>{
+      const matchId=String(row[0]??'').trim(),parts=String(row[14]??'').split('|');
+      const eventDate=normalizeSheetDate(parts[1]);
+      if(matchId&&eventDate)metaByMatch.set(matchId,{eventTime:String(parts[0]??'').trim(),eventDate,tournament:String(parts[2]??'').trim()});
+    });
+    rows.slice(1).forEach((row,i)=>{
+      const c=parseCandidateLine(row.join('\t'),i);if(!c)return;
+      Object.assign(c,metaByMatch.get(c.matchId)||{});parsed.push(c);
+    });
     if(!parsed.length)throw new Error('No valid Market Edge rows were found in columns A:L.');
     const count=setCandidatePool(parsed);
     status.textContent=`Live feed loaded: ${count} unique candidates · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
@@ -153,18 +186,19 @@ function parseCandidateLine(line,index){
 }
 
 function candidateToLeg(c){
-  return {sourceId:c.id,matchId:c.matchId,market:c.market,desc:c.desc,odds:c.odds,prob:Number((c.model*100).toFixed(3)),noVig:c.noVig,confidence:c.confidence,rawEdge:c.rawEdge};
+  return {sourceId:c.id,matchId:c.matchId,market:c.market,desc:c.desc,odds:c.odds,prob:Number((c.model*100).toFixed(3)),noVig:c.noVig,confidence:c.confidence,rawEdge:c.rawEdge,eventDate:c.eventDate,eventTime:c.eventTime,tournament:c.tournament};
 }
 
 function renderCandidates(){
   const term=document.getElementById('candidateSearch').value.trim().toLowerCase();
-  const filtered=candidates.filter(c=>!term||[c.matchId,c.playerA,c.playerB,c.market,c.pick].join(' ').toLowerCase().includes(term));
-  document.getElementById('poolCount').textContent=`${candidates.length} candidate${candidates.length===1?'':'s'}`;
+  const slateCandidates=candidates.filter(c=>c.eventDate===selectedSlateDate);
+  const filtered=slateCandidates.filter(c=>!term||[c.matchId,c.playerA,c.playerB,c.market,c.pick,c.tournament].join(' ').toLowerCase().includes(term));
+  document.getElementById('poolCount').textContent=`${slateCandidates.length} candidate${slateCandidates.length===1?'':'s'} · ${formatSlateDate(selectedSlateDate)}`;
   const selected=new Set(legs.map(l=>l.sourceId).filter(Boolean));
   document.getElementById('candidateList').innerHTML=filtered.length?filtered.map(c=>`
     <label class="candidate">
       <input type="checkbox" data-candidate="${esc(c.id)}" ${selected.has(c.id)?'checked':''}>
-      <span><span class="candidate-name">${esc(c.desc)}</span><span class="candidate-meta">${esc(c.matchId||'No MatchID')} · BE ${pct(c.be)} · model ${pct(c.model)}${c.confidence?` · conf ${esc(c.confidence)}`:''}</span></span>
+      <span><span class="candidate-name">${esc(c.desc)}</span><span class="candidate-meta">${esc(c.eventTime||'Time TBD')}${c.tournament?` · ${esc(c.tournament)}`:''} · BE ${pct(c.be)} · model ${pct(c.model)}${c.confidence?` · conf ${esc(c.confidence)}`:''}</span></span>
       <span class="candidate-edge ${c.rawEdge<0?'neg':''}">${pp(c.rawEdge)}</span>
     </label>`).join(''):'<div class="empty">No candidates match this filter.</div>';
 }
@@ -302,7 +336,7 @@ function combinations(arr,k,limit=75000){
 }
 function rankCombinations(){
   const size=Number(document.getElementById('comboSize').value),trust=Number(document.getElementById('modelTrust').value),min=Number(document.getElementById('minEdge').value||0)/100,mode=document.getElementById('sameMatch').value,marketMix=document.getElementById('marketMix').value,sortMode=document.getElementById('comboSort').value,diversityMode=document.getElementById('resultDiversity').value;
-  const eligible=candidates.filter(c=>c.rawEdge>=min&&validLeg(candidateToLeg(c))).sort((a,b)=>(adjustedLegProbability(candidateToLeg(b),trust)-b.be)-(adjustedLegProbability(candidateToLeg(a),trust)-a.be)).slice(0,22);
+  const eligible=candidates.filter(c=>c.eventDate===selectedSlateDate&&c.rawEdge>=min&&validLeg(candidateToLeg(c))).sort((a,b)=>(adjustedLegProbability(candidateToLeg(b),trust)-b.be)-(adjustedLegProbability(candidateToLeg(a),trust)-a.be)).slice(0,22);
   if(eligible.length<size){lastSuggestions=[];document.getElementById('suggestions').innerHTML=`<div class="empty">Only ${eligible.length} eligible candidates remain; ${size} are required.</div>`;document.getElementById('comboPageStatus').textContent='';return;}
   const sets=combinations(eligible,size);
   evaluatedCombinationCount=sets.length;
@@ -350,6 +384,14 @@ document.getElementById('candidateList').addEventListener('change',e=>{
   saveState();renderLegs();renderCandidates();
 });
 document.getElementById('candidateSearch').addEventListener('input',renderCandidates);
+document.getElementById('slateDate').addEventListener('change',e=>{
+  selectedSlateDate=e.target.value;
+  legs=legs.filter(l=>l.eventDate===selectedSlateDate);
+  lastSuggestions=[];evaluatedCombinationCount=0;passingCombinationCount=0;comboPage=0;
+  document.getElementById('suggestions').innerHTML='<div class="empty">Rank combinations for this slate date.</div>';
+  document.getElementById('comboPageStatus').textContent='';
+  saveState();renderCandidates();renderLegs();
+});
 document.getElementById('clearSelection').addEventListener('click',()=>{legs=legs.filter(l=>!l.sourceId);saveState();renderLegs();renderCandidates();});
 document.getElementById('clearSlip').addEventListener('click',()=>{legs=[];saveState();renderLegs();renderCandidates();});
 document.getElementById('refreshFeed').addEventListener('click',loadPublishedFeed);
