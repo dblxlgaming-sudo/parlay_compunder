@@ -185,23 +185,23 @@
   <header>
     <div class="eyebrow">Triple Threat / Bet Sizing</div>
     <h1>Parlay Builder & Combination Lab</h1>
-    <div class="sub">Build your own 2–6 leg slip or import Market Edge View and compare ranked combinations. Every label is driven by visible probability, edge, fragility, and correlation rules.</div>
+    <div class="sub">Build your own 2–6 leg slip from model-produced market artifacts and compare ranked combinations. Every label is driven by visible probability, edge, fragility, and correlation rules.</div>
   </header>
 
   <details class="import-panel" open>
-    <summary>1. Import candidate pool from Market Edge View</summary>
-    <div class="import-help">The calculator automatically loads the published Google Sheet feed. Use Refresh after bookmaker odds or model values change.</div>
-    <div class="import-actions" style="margin-bottom:10px"><button class="primary" id="refreshFeed">Refresh Google Sheet</button><span class="import-status" id="feedStatus">Waiting to load…</span></div>
+    <summary>1. Load eligible markets from sport models</summary>
+    <div class="import-help">The calculator loads accepted Tennis and WNBA market artifacts independently of Home and Full Slate publication. Use Refresh after sportsbook odds or model values change.</div>
+    <div class="import-actions" style="margin-bottom:10px"><button class="primary" id="refreshFeed">Refresh Model Feed</button><span class="import-status" id="feedStatus">Waiting to load…</span></div>
   </details>
 
   <div class="section" id="poolSection">
-    <div class="section-head"><div><div class="section-title">2. Candidate Pool</div><div class="section-copy">Choose one slate date, then check up to six legs. Candidates and ranked combinations never mix dates.</div></div><div class="tiny" id="poolCount">0 candidates</div></div>
+    <div class="section-head"><div><div class="section-title">2. Candidate Pool</div><div class="section-copy">Choose one event date, then check up to six explicitly Compounder-eligible legs. Candidates and ranked combinations never mix dates.</div></div><div class="tiny" id="poolCount">0 candidates</div></div>
     <div class="controls" style="margin-top:0">
       <div class="control"><label>Slate date</label><select id="slateDate"></select></div>
       <div class="control" style="flex:1"><label>Search selected slate</label><input id="candidateSearch" type="search" placeholder="Search player, pick, market, tournament, or MatchID" style="width:100%"></div>
       <button class="secondary" id="clearSelection">Clear selection</button>
     </div>
-    <div class="candidate-list" id="candidateList"><div class="empty">Loading the live Market Edge feed…</div></div>
+    <div class="candidate-list" id="candidateList"><div class="empty">Loading model-produced market artifacts…</div></div>
   </div>
 
   <div class="section">
@@ -217,12 +217,12 @@
       <div class="control"><label>Per page</label><select id="resultsPerPage"><option>5</option><option selected>6</option><option>7</option></select></div>
       <button class="primary" id="findCombos">Rank combinations</button>
     </div>
-    <div class="tiny">Adjusted probability = no-vig probability + Model Trust × (model probability − no-vig probability). This is a transparent stress test, not historical calibration.</div>
+    <div class="tiny">Sensitivity-adjusted probability = no-vig probability + Model Trust × (model probability − no-vig probability). Model Trust is a sensitivity control, not historical calibration or measured reliability.</div>
     <div class="suggestions" id="suggestions"><div class="empty">Import candidates, choose a leg count, then rank combinations.</div></div>
     <div class="import-actions" style="justify-content:space-between"><button class="secondary" id="prevCombos">← Previous</button><span class="tiny" id="comboPageStatus"></span><button class="secondary" id="nextCombos">Next →</button></div>
   </div>
 
-  <div class="section-head" style="margin-top:26px"><div><div class="section-title">4. My Parlay</div><div class="section-copy">Select candidates above or use a ranked suggestion. Odds and probabilities come only from the live Market Edge feed. Maximum six.</div></div></div>
+  <div class="section-head" style="margin-top:26px"><div><div class="section-title">4. My Parlay</div><div class="section-copy">Select candidates above or use a ranked suggestion. Odds and probabilities come from model-produced market artifacts. Maximum six.</div></div></div>
 
   <div class="legs" id="legs"></div>
   <div style="display:flex;justify-content:flex-end"><button class="secondary" id="clearSlip">Clear slip</button></div>

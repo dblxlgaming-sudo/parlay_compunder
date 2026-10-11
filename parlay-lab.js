@@ -1,7 +1,7 @@
 const legsEl = document.getElementById('legs');
 const stakeEl = document.getElementById('stake');
 const STORAGE_KEY = 'triple-threat-parlay-lab-v3';
-const DEFAULT_FEED_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTUgynZkMlV0EmiCfbuxUoIw6C9_dHoYByxdKwWFnBoUeHUnompM-_FJ4sD_fBfVlX3PcsjhAIQVno4/pub?gid=955945205&single=true&output=csv';
+const DEFAULT_FEED_URL = './compounder-feed.json';
 let legs = [];
 let candidates = [];
 let hasURLLegs = false;
@@ -10,6 +10,7 @@ let comboPage = 0;
 let evaluatedCombinationCount = 0;
 let passingCombinationCount = 0;
 let selectedSlateDate = '';
+let pendingMarketId = '';
 
 function finite(v){ return Number.isFinite(Number(v)); }
 function clamp(v,min,max){ return Math.min(max,Math.max(min,v)); }
@@ -29,6 +30,12 @@ function decimalToAmerican(d){
 function probabilityToAmerican(p){
   p=Number(p); if(!finite(p)||p<=0||p>=1) return NaN;
   return p>=.5 ? -Math.round(100*p/(1-p)) : Math.round(100*(1-p)/p);
+}
+function decimalOddsFromRecord(record){
+  const american=Number(record.sportsbookAmericanOdds);
+  if(finite(american)&&(american<=-100||american>=100)) return americanToDecimal(american);
+  const decimal=Number(record.sportsbookDecimalOdds);
+  return finite(decimal)&&decimal>1 ? decimal : NaN;
 }
 function fmtAmerican(v){ v=Math.round(Number(v)); return finite(v)?`${v>0?'+':''}${v}`:'—'; }
 function parsePercent(value){
@@ -73,6 +80,8 @@ function applyURLParameters(){
   const kelly=q.get('kelly');if(['0.125','0.25','0.5'].includes(kelly))document.getElementById('kellyFraction').value=kelly;
   const combo=q.get('combo_size');if(['2','3','4','5','6'].includes(combo))document.getElementById('comboSize').value=combo;
   const same=q.get('same_match');if(['exclude','review'].includes(same))document.getElementById('sameMatch').value=same;
+  pendingMarketId=String(q.get('market_id')||'').trim();
+  if(pendingMarketId)return;
   const urlLegs=[];
   for(let i=1;i<=6;i++){
     const pick=q.get(`l${i}_pick`),odds=Number(q.get(`l${i}_odds`)),prob=parsePercent(q.get(`l${i}_prob`));
@@ -83,23 +92,10 @@ function applyURLParameters(){
   if(urlLegs.length){legs=urlLegs;hasURLLegs=true;}
 }
 
-function parseCSV(text){
-  const rows=[];let row=[],cell='',quoted=false;
-  for(let i=0;i<text.length;i++){
-    const ch=text[i],next=text[i+1];
-    if(ch==='"'&&quoted&&next==='"'){cell+='"';i++;}
-    else if(ch==='"')quoted=!quoted;
-    else if(ch===','&&!quoted){row.push(cell);cell='';}
-    else if((ch==='\n'||ch==='\r')&&!quoted){
-      if(ch==='\r'&&next==='\n')i++;
-      row.push(cell);if(row.some(v=>v!==''))rows.push(row);row=[];cell='';
-    } else cell+=ch;
-  }
-  row.push(cell);if(row.some(v=>v!==''))rows.push(row);return rows;
-}
-
-function normalizeSheetDate(value){
+function normalizeEventDate(value){
   const raw=String(value??'').trim();
+  const iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso)return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const match=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if(!match)return '';
   return `${match[3]}-${match[1].padStart(2,'0')}-${match[2].padStart(2,'0')}`;
@@ -126,6 +122,17 @@ function setCandidatePool(parsed){
   for(const c of parsed){const key=c.id.toLowerCase();if(!seen.has(key)){seen.add(key);unique.push(c);}}
   candidates=unique;
   populateSlateDates();
+  if(pendingMarketId){
+    const requested=candidates.find(c=>c.id===pendingMarketId);
+    if(requested){
+      selectedSlateDate=requested.eventDate;
+      populateSlateDates();
+      legs=[candidateToLeg(requested)];
+      pendingMarketId='';
+      saveState();renderCandidates();renderLegs();
+      return unique.length;
+    }
+  }
   legs=legs.map(l=>{
     if(l.sourceId){const current=candidates.find(c=>c.id===l.sourceId);return current?candidateToLeg(current):null;}
     if(hasURLLegs){
@@ -139,54 +146,49 @@ function setCandidatePool(parsed){
 }
 
 async function loadPublishedFeed(){
-  const status=document.getElementById('feedStatus');status.textContent='Loading Google Sheet…';status.className='import-status';
+  const status=document.getElementById('feedStatus');status.textContent='Loading model artifacts…';status.className='import-status';
   try{
-    if(window.location.protocol==='file:')throw new Error('Live feed is blocked in local-file mode. Test the HTTPS GitHub Pages URL.');
     const q=new URLSearchParams(window.location.search),feed=q.get('feed')||DEFAULT_FEED_URL;
-    if(!/^https:\/\//i.test(feed))throw new Error('Feed URL must use HTTPS.');
+    if(!/^https:\/\//i.test(feed)&&!/^\.\.?\//.test(feed))throw new Error('Feed URL must use HTTPS or a same-site relative path.');
     const separator=feed.includes('?')?'&':'?';
     const response=await fetch(`${feed}${separator}_=${Date.now()}`,{cache:'no-store'});
-    if(!response.ok)throw new Error(`Google Sheet returned ${response.status}.`);
-    const rows=parseCSV(await response.text()),parsed=[],metaByMatch=new Map();
-    rows.slice(1).forEach(row=>{
-      const matchId=String(row[0]??'').trim(),parts=String(row[14]??'').split('|');
-      const eventDate=normalizeSheetDate(parts[1]);
-      if(matchId&&eventDate)metaByMatch.set(matchId,{eventTime:String(parts[0]??'').trim(),eventDate,tournament:String(parts[2]??'').trim()});
-    });
-    rows.slice(1).forEach((row,i)=>{
-      const c=parseCandidateLine(row.join('\t'),i);if(!c)return;
-      Object.assign(c,metaByMatch.get(c.matchId)||{});parsed.push(c);
-    });
-    if(!parsed.length)throw new Error('No valid Market Edge rows were found in columns A:L.');
+    if(!response.ok)throw new Error(`Model artifact feed returned ${response.status}.`);
+    const payload=await response.json();
+    const records=Array.isArray(payload)?payload:(Array.isArray(payload.markets)?payload.markets:[]);
+    if(!records.length)throw new Error('The Compounder feed contains no market records.');
+    if(pendingMarketId){
+      const source=records.find(r=>String(r.marketId??'').trim()===pendingMarketId);
+      if(!source)throw new Error(`market_id ${pendingMarketId} was not found.`);
+      if(String(source.compounderEligibility??'').trim().toUpperCase()!=='ELIGIBLE')throw new Error(`market_id ${pendingMarketId} is not Compounder eligible.`);
+    }
+    const parsed=records.map(normalizeMarketRecord).filter(Boolean);
+    if(!parsed.length)throw new Error('No explicitly ELIGIBLE markets with valid direct prices and probabilities were found.');
     const count=setCandidatePool(parsed);
-    status.textContent=`Live feed loaded: ${count} unique candidates · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
+    status.textContent=`Model artifacts loaded: ${count} eligible markets · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
   }catch(error){
     status.textContent=`Feed unavailable: ${error.message} ${candidates.length?'Showing the last saved feed.':''}`;status.className='import-status error';
   }
 }
 
-function parseCandidateLine(line,index){
-  const c=line.split('\t').map(v=>v.trim());
-  if(!c.length) return null;
-  let x;
-  if(c.length>=12){
-    if(/^matchid$/i.test(c[0])) return null;
-    x={matchId:c[0],playerA:c[1],playerB:c[2],market:c[3],pick:c[4],be:parsePercent(c[5]),noVig:parsePercent(c[6]),model:parsePercent(c[7]),marketEdge:parsePercent(c[8]),confidence:c[9],fairOdds:Number(c[10]),beEdge:parsePercent(c[11])};
-  } else if(c.length>=5){
-    if(/^market$/i.test(c[0])) return null;
-    x={matchId:'',playerA:'',playerB:'',market:c[0],pick:c[1],be:parsePercent(c[2]),noVig:parsePercent(c[3]),model:parsePercent(c[4]),rawEdge:NaN,confidence:'',fairOdds:NaN,beEdge:NaN};
-  } else return null;
-  if(!x.pick||/pass|no clear lean|no total projection/i.test(x.pick)||!(x.be>0&&x.be<1)||!(x.model>0&&x.model<1)) return null;
-  x.rawEdge=finite(x.beEdge)?x.beEdge:x.model-x.be;
-  x.odds=probabilityToAmerican(x.be);
-  const eventLabel=x.playerA&&x.playerB?`${x.playerA} vs ${x.playerB}`:x.matchId;
-  x.desc=`${x.market}: ${x.pick}${eventLabel?` — ${eventLabel}`:''}`;
-  x.id=x.matchId?`${x.matchId}|${x.market}|${x.pick}`:`row-${index}|${x.market}|${x.pick}|${x.odds}`;
-  return x;
+function normalizeMarketRecord(record){
+  if(!record||String(record.compounderEligibility??'').trim().toUpperCase()!=='ELIGIBLE')return null;
+  const id=String(record.marketId??'').trim(),matchId=String(record.eventId??record.matchId??'').trim();
+  const market=String(record.marketType??'').trim(),pick=String(record.selection??'').trim();
+  const eventDate=normalizeEventDate(record.eventDate),model=parsePercent(record.modelProbability),noVig=parsePercent(record.noVigProbability);
+  const decimal=decimalOddsFromRecord(record);
+  if(!id||!matchId||!market||!pick||!eventDate||!(model>0&&model<1)||!finite(decimal)||decimal<=1)return null;
+  const suppliedAmerican=Number(record.sportsbookAmericanOdds);
+  const odds=finite(suppliedAmerican)&&(suppliedAmerican<=-100||suppliedAmerican>=100)?suppliedAmerican:decimalToAmerican(decimal);
+  const be=1/decimal,verifiedEdge=parsePercent(record.verifiedEdge);
+  const playerA=String(record.participantA??'').trim(),playerB=String(record.participantB??'').trim();
+  const eventLabel=playerA&&playerB?`${playerA} vs ${playerB}`:matchId;
+  const line=record.line===null||record.line===undefined?'':String(record.line).trim();
+  const pickLabel=line&&!pick.includes(line)?`${pick} ${line}`:pick;
+  return {id,matchId,eventId:String(record.eventId??'').trim(),sport:String(record.sport??'').trim(),league:String(record.league??'').trim(),boardDate:normalizeEventDate(record.boardDate),eventDate,eventTime:String(record.eventTime??'').trim(),timezone:String(record.timezone??'').trim(),tournament:String(record.competition??record.tournament??'').trim(),playerA,playerB,market,pick:pickLabel,line,sportsbook:String(record.sportsbook??'').trim(),odds,decimal,be,noVig,model,rawEdge:finite(verifiedEdge)?verifiedEdge:model-be,fairOdds:Number(record.modelFairOdds),modelRead:String(record.modelRead??'').trim(),straightBetClassification:String(record.straightBetClassification??'').trim(),passReasonCode:String(record.passReasonCode??'').trim(),compounderEligibility:'ELIGIBLE',modelVersion:String(record.modelVersion??'').trim(),confidence:String(record.straightBetClassification??'').trim(),desc:`${market}: ${pickLabel}${eventLabel?` — ${eventLabel}`:''}`};
 }
 
 function candidateToLeg(c){
-  return {sourceId:c.id,matchId:c.matchId,market:c.market,desc:c.desc,odds:c.odds,prob:Number((c.model*100).toFixed(3)),noVig:c.noVig,confidence:c.confidence,rawEdge:c.rawEdge,eventDate:c.eventDate,eventTime:c.eventTime,tournament:c.tournament};
+  return {sourceId:c.id,marketId:c.id,matchId:c.matchId,market:c.market,desc:c.desc,odds:c.odds,prob:Number((c.model*100).toFixed(3)),noVig:c.noVig,confidence:c.confidence,rawEdge:c.rawEdge,eventDate:c.eventDate,eventTime:c.eventTime,tournament:c.tournament};
 }
 
 function renderCandidates(){
@@ -241,7 +243,7 @@ function analyzeSlip(items,trust=1){
 
 function classify(a){
   if(!a||a.items.length<2) return {label:'ADD LEGS',text:'Use two to six valid legs for parlay guidance.',color:'var(--sub)'};
-  if(a.duplicateMatches.length) return {label:'CORRELATION REVIEW',text:'At least two legs share a MatchID. The independence calculation may materially misstate the real joint probability.',color:'var(--amber)'};
+  if(a.duplicateMatches.length) return {label:'CORRELATION REVIEW',text:'At least two legs share the same authoritative event identity. Joint probability is not correlation-adjusted.',color:'var(--amber)'};
   if(a.adjLegEdges.some(e=>e<=0)||a.adjEdge<=0) return {label:'AVOID',text:'At least one leg or the full slip has no positive edge under the selected probability stress test.',color:'var(--neg)'};
   if(a.adjAll<.10||a.ratio>2) return {label:'SINGLES PREFERRED',text:'The individual edges may be positive, but stacking them creates a very fragile slip under the selected assumptions.',color:'var(--amber)'};
   if(Math.min(...a.adjLegEdges)>=.03&&a.adjROI>=.25&&a.ratio<=1.35) return {label:'STRONG',text:'Every leg remains positive after adjustment, with comparatively strong projected return and controlled fragility.',color:'var(--pos)'};
@@ -308,7 +310,7 @@ function renderGuidance(rawAnalysis){
   const badge=document.getElementById('guidanceBadge');badge.textContent=q.label;badge.style.background=q.color;
   document.getElementById('guidanceText').textContent=a?`${q.text} Adjusted hit ${pct(a.adjAll)}, adjusted breakeven edge ${pp(a.adjEdge)}, adjusted ROI ${pct(a.adjROI)}, miss-one/win ratio ${a.ratio.toFixed(2)}.`:q.text;
   const warnings=[];
-  if(a?.duplicateMatches.length) warnings.push(`Shared MatchID: ${a.duplicateMatches.join(', ')}`);
+  if(a?.duplicateMatches.length) warnings.push(`Shared event identity: ${a.duplicateMatches.join(', ')}. Joint probability is not correlation-adjusted.`);
   if(a?.adjLegEdges.some(e=>e<=0)) warnings.push('One or more legs loses its positive edge under the selected Model Trust setting.');
   if(a&&a.items.length>6) warnings.push('The tool is designed for no more than six legs.');
   document.getElementById('warningList').innerHTML=warnings.map(w=>`<div>⚠ ${esc(w)}</div>`).join('');
@@ -318,7 +320,7 @@ function renderGuidance(rawAnalysis){
     const reduced=analyzeSlip(legs.filter((_,j)=>j!==i),trust);
     return {name:l.desc,hit:reduced.rawAll,edge:reduced.rawEdge,ratio:reduced.ratio,delta:reduced.rawAll-a.rawAll};
   }).sort((x,y)=>y.delta-x.delta);
-  impact.innerHTML=`<table class="impact-table"><thead><tr><th>Remove leg</th><th>New hit</th><th>Hit change</th><th>New edge</th><th>Miss-one/win</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${pct(r.hit)}</td><td>${pp(r.delta)}</td><td>${pp(r.edge)}</td><td>${finite(r.ratio)?r.ratio.toFixed(2):'—'}</td></tr>`).join('')}</tbody></table>`;
+  impact.innerHTML=`<table class="impact-table"><thead><tr><th>Remove leg</th><th>New hit (raw)</th><th>Hit change (raw)</th><th>New edge (raw)</th><th>Miss-one/win (sensitivity-adjusted)</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${pct(r.hit)}</td><td>${pp(r.delta)}</td><td>${pp(r.edge)}</td><td>${finite(r.ratio)?r.ratio.toFixed(2):'—'}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function comboScore(a){
