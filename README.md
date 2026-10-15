@@ -2,15 +2,25 @@
 
 The Compounder consumes model-produced market artifacts. It does not use Google Sheets and does not control the member site's Home or Full Slate publication pipeline.
 
-## Data flow
+## Production data flow
 
 ```text
-Tennis V2 corrected downstream CSV --\
-                                      -> Compounder publisher -> compounder-feed.json -> GitHub Pages tool
-WNBA frozen market.csv --------------/
+Sport models -> Publisher qualification/publication -> public-feed.json -> GitHub Pages tool
 ```
 
-The receiver preserves model-owned prices and probabilities. It applies only the reviewed LBG core-market classification and Compounder-eligibility rules needed by the existing tool.
+The production client reads the Publisher contract directly:
+
+```text
+https://lbg-todays-board.univursmusic.chatgpt.site/public-feed.json
+```
+
+Contract: `triple-threat-compounder-feed/1`. The endpoint chooses the active America/Phoenix board date. A specific published board can be requested with `?date=YYYY-MM-DD`.
+
+The Compounder does not calculate qualification. It accepts only records whose authoritative `compounderEligibility` is exactly `ELIGIBLE`. `selectionId` is the stable selected-outcome identity; `eventId` drives same-event protections. Prices, probabilities, classifications, dates, and provenance are preserved from Publisher.
+
+The last successfully validated publication is retained in browser storage. A network failure, an unavailable response, or an unpublished `db-0` response cannot replace it. A genuinely published slate with zero eligible markets is accepted and displayed as a valid empty pool. Saved legs are revalidated against every accepted replacement slate.
+
+The legacy local artifact builders remain available for source-contract testing and recovery, but `compounder-feed.json` is no longer the production default.
 
 Tennis uses `MatchID` as its authoritative event identity because `lbg-tennis-downstream/1` does not supply `EventID`. The receiver does not manufacture one. WNBA uses its supplied `EventID`. Automatic combination exclusion and manual Kelly suppression compare the resulting authoritative event identity.
 
@@ -52,6 +62,12 @@ https://dblxlgaming-sudo.github.io/parlay_compunder/?market_id=<stable-market-id
 ```
 
 The feed loads first, then the exact eligible market is placed in My Parlay and its event date is selected.
+
+`market_id` must use Publisher `selectionId`. A non-default compatible endpoint can be supplied as an HTTPS-encoded `feed` query parameter:
+
+```text
+https://dblxlgaming-sudo.github.io/parlay_compunder/?feed=https%3A%2F%2Fexample.com%2Ffeed.json&market_id=<selectionId>
+```
 
 ## Member site
 

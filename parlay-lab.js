@@ -1,9 +1,12 @@
 const legsEl = document.getElementById('legs');
 const stakeEl = document.getElementById('stake');
 const STORAGE_KEY = 'triple-threat-parlay-lab-v3';
-const DEFAULT_FEED_URL = './compounder-feed.json';
+const FEED_CACHE_KEY = 'triple-threat-parlay-published-feed-v1';
+const FEED_CONTRACT = 'triple-threat-compounder-feed/1';
+const DEFAULT_FEED_URL = 'https://lbg-todays-board.univursmusic.chatgpt.site/public-feed.json';
 let legs = [];
 let candidates = [];
+let activeFeed = null;
 let hasURLLegs = false;
 let lastSuggestions = [];
 let comboPage = 0;
@@ -32,7 +35,7 @@ function probabilityToAmerican(p){
   return p>=.5 ? -Math.round(100*p/(1-p)) : Math.round(100*(1-p)/p);
 }
 function decimalOddsFromRecord(record){
-  const american=Number(record.sportsbookAmericanOdds);
+  const american=Number(record.sportsbookAmericanOdds??record.americanOdds);
   if(finite(american)&&(american<=-100||american>=100)) return americanToDecimal(american);
   const decimal=Number(record.sportsbookDecimalOdds);
   return finite(decimal)&&decimal>1 ? decimal : NaN;
@@ -55,14 +58,13 @@ function adjustedLegProbability(l,trust){
 }
 
 function saveState(){
-  try { localStorage.setItem(STORAGE_KEY,JSON.stringify({legs,candidates,stake:Number(stakeEl.value)||0,bankroll:Number(document.getElementById('bankroll').value)||0,unitSize:Number(document.getElementById('unitSize').value)||0,kellyFraction:Number(document.getElementById('kellyFraction').value)||.25,maxUnits:Number(document.getElementById('maxUnits').value)||0})); } catch(_){}
+  try { localStorage.setItem(STORAGE_KEY,JSON.stringify({legs,stake:Number(stakeEl.value)||0,bankroll:Number(document.getElementById('bankroll').value)||0,unitSize:Number(document.getElementById('unitSize').value)||0,kellyFraction:Number(document.getElementById('kellyFraction').value)||.25,maxUnits:Number(document.getElementById('maxUnits').value)||0})); } catch(_){}
 }
 function loadState(){
   try {
     const saved=JSON.parse(localStorage.getItem(STORAGE_KEY));
     if(saved){
       legs=Array.isArray(saved.legs)?saved.legs.slice(0,6):[];
-      candidates=Array.isArray(saved.candidates)?saved.candidates.slice(0,250):[];
       if(finite(saved.stake)) stakeEl.value=saved.stake;
       if(finite(saved.bankroll)) document.getElementById('bankroll').value=saved.bankroll;
       if(finite(saved.unitSize)&&saved.unitSize>0) document.getElementById('unitSize').value=saved.unitSize;
@@ -70,6 +72,19 @@ function loadState(){
       if(finite(saved.maxUnits)) document.getElementById('maxUnits').value=saved.maxUnits;
     }
   } catch(_){}
+}
+
+function loadCachedFeed(){
+  try{
+    const cached=JSON.parse(localStorage.getItem(FEED_CACHE_KEY));
+    if(!cached||cached.schemaVersion!==FEED_CONTRACT||!cached.meta||!Array.isArray(cached.candidates))return false;
+    activeFeed=cached.meta;
+    candidates=cached.candidates;
+    return true;
+  }catch(_){return false;}
+}
+function saveCachedFeed(meta,parsed){
+  try{localStorage.setItem(FEED_CACHE_KEY,JSON.stringify({schemaVersion:FEED_CONTRACT,meta,candidates:parsed}));}catch(_){}
 }
 
 function applyURLParameters(){
@@ -145,46 +160,80 @@ function setCandidatePool(parsed){
   return unique.length;
 }
 
+function validatePublishedFeed(payload){
+  if(!payload||typeof payload!=='object')throw new Error('Publisher returned an invalid JSON document.');
+  if(payload.unavailable===true)throw new Error('Publisher marked this feed unavailable.');
+  const schema=String(payload.schemaVersion??payload.contract??'').trim();
+  if(schema!==FEED_CONTRACT)throw new Error(`Unsupported feed contract ${schema||'(missing)'}.`);
+  const boardDate=normalizeEventDate(payload.boardDate),publishedAt=String(payload.publishedAt??'').trim(),version=String(payload.version??payload.boardVersion??'').trim();
+  if(!boardDate||!publishedAt||!finite(Date.parse(publishedAt))||!version||/^db-0$/i.test(version))throw new Error('Publisher has no valid published slate for this date yet.');
+  if(!Array.isArray(payload.markets))throw new Error('Publisher feed is missing its markets array.');
+  const explicitlyEligible=payload.markets.filter(record=>String(record?.compounderEligibility??'').trim().toUpperCase()==='ELIGIBLE');
+  const parsed=explicitlyEligible.map(normalizeMarketRecord);
+  const invalidCount=parsed.filter(record=>!record).length;
+  if(invalidCount)throw new Error(`${invalidCount} explicitly eligible market${invalidCount===1?' is':'s are'} missing required identity, date, price, or probability fields.`);
+  const valid=parsed.filter(Boolean),ids=new Set();
+  for(const record of valid){if(ids.has(record.id.toLowerCase()))throw new Error(`Duplicate stable selection ID ${record.id}.`);ids.add(record.id.toLowerCase());}
+  const slateIds=[...new Set(payload.markets.map(record=>String(record?.slateId??'').trim()).filter(Boolean))];
+  return {meta:{schemaVersion:schema,boardDate,publishedAt,version,slateId:slateIds.length===1?slateIds[0]:'',marketCount:payload.markets.length,eligibleCount:valid.length,feedUrl:''},parsed:valid};
+}
+
+function isNewerFeed(next,current){
+  if(!current)return true;
+  const nextTime=Date.parse(next.publishedAt),currentTime=Date.parse(current.publishedAt);
+  return nextTime>currentTime||(nextTime===currentTime&&(next.boardDate!==current.boardDate||next.version!==current.version));
+}
+
+function feedLabel(meta){
+  const slate=meta.slateId?` · ${meta.slateId}`:'';
+  return `${meta.boardDate}${slate} · ${meta.version} · ${meta.eligibleCount} eligible`;
+}
+
 async function loadPublishedFeed(){
-  const status=document.getElementById('feedStatus');status.textContent='Loading model artifacts…';status.className='import-status';
+  const status=document.getElementById('feedStatus');status.textContent='Refreshing Publisher feed…';status.className='import-status';
   try{
     const q=new URLSearchParams(window.location.search),feed=q.get('feed')||DEFAULT_FEED_URL;
     if(!/^https:\/\//i.test(feed)&&!/^\.\.?\//.test(feed))throw new Error('Feed URL must use HTTPS or a same-site relative path.');
     const separator=feed.includes('?')?'&':'?';
     const response=await fetch(`${feed}${separator}_=${Date.now()}`,{cache:'no-store'});
-    if(!response.ok)throw new Error(`Model artifact feed returned ${response.status}.`);
+    if(!response.ok)throw new Error(`Publisher feed returned ${response.status}.`);
     const payload=await response.json();
-    const records=Array.isArray(payload)?payload:(Array.isArray(payload.markets)?payload.markets:[]);
-    if(!records.length)throw new Error('The Compounder feed contains no market records.');
+    const validated=validatePublishedFeed(payload),meta={...validated.meta,feedUrl:feed};
+    if(activeFeed&&!isNewerFeed(meta,activeFeed)){
+      status.textContent=`No newer publication. Loaded ${feedLabel(activeFeed)}.`;
+      status.className='import-status';return;
+    }
     if(pendingMarketId){
-      const source=records.find(r=>String(r.marketId??'').trim()===pendingMarketId);
+      const source=payload.markets.find(r=>String(r.selectionId??r.marketId??'').trim()===pendingMarketId);
       if(!source)throw new Error(`market_id ${pendingMarketId} was not found.`);
       if(String(source.compounderEligibility??'').trim().toUpperCase()!=='ELIGIBLE')throw new Error(`market_id ${pendingMarketId} is not Compounder eligible.`);
     }
-    const parsed=records.map(normalizeMarketRecord).filter(Boolean);
-    if(!parsed.length)throw new Error('No explicitly ELIGIBLE markets with valid direct prices and probabilities were found.');
-    const count=setCandidatePool(parsed);
-    status.textContent=`Model artifacts loaded: ${count} eligible markets · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
+    activeFeed=meta;saveCachedFeed(meta,validated.parsed);
+    const count=setCandidatePool(validated.parsed);
+    status.textContent=count?`Publisher slate loaded: ${feedLabel(meta)}.`:`Publisher slate loaded: ${feedLabel(meta)}. Valid publication; no markets are explicitly eligible.`;
+    status.className='import-status';
   }catch(error){
-    status.textContent=`Feed unavailable: ${error.message} ${candidates.length?'Showing the last saved feed.':''}`;status.className='import-status error';
+    status.textContent=`Refresh failed: ${error.message}${activeFeed?` Retaining ${feedLabel(activeFeed)}.`:''}`;status.className='import-status error';
   }
 }
 
 function normalizeMarketRecord(record){
   if(!record||String(record.compounderEligibility??'').trim().toUpperCase()!=='ELIGIBLE')return null;
-  const id=String(record.marketId??'').trim(),matchId=String(record.eventId??record.matchId??'').trim();
+  const id=String(record.selectionId??record.marketId??'').trim(),matchId=String(record.eventId??record.matchId??'').trim();
   const market=String(record.marketType??'').trim(),pick=String(record.selection??'').trim();
   const eventDate=normalizeEventDate(record.eventDate),model=parsePercent(record.modelProbability),noVig=parsePercent(record.noVigProbability);
   const decimal=decimalOddsFromRecord(record);
   if(!id||!matchId||!market||!pick||!eventDate||!(model>0&&model<1)||!finite(decimal)||decimal<=1)return null;
-  const suppliedAmerican=Number(record.sportsbookAmericanOdds);
+  const suppliedAmerican=Number(record.sportsbookAmericanOdds??record.americanOdds);
   const odds=finite(suppliedAmerican)&&(suppliedAmerican<=-100||suppliedAmerican>=100)?suppliedAmerican:decimalToAmerican(decimal);
-  const be=1/decimal,verifiedEdge=parsePercent(record.verifiedEdge);
-  const playerA=String(record.participantA??'').trim(),playerB=String(record.participantB??'').trim();
+  const be=1/decimal,verifiedEdge=parsePercent(record.verifiedEdge??record.edge);
+  const matchup=String(record.matchup??'').trim(),parts=matchup.split(/\s+vs\.?\s+/i);
+  const playerA=String(record.participantA??parts[0]??'').trim(),playerB=String(record.participantB??parts[1]??'').trim();
   const eventLabel=playerA&&playerB?`${playerA} vs ${playerB}`:matchId;
   const line=record.line===null||record.line===undefined?'':String(record.line).trim();
   const pickLabel=line&&!pick.includes(line)?`${pick} ${line}`:pick;
-  return {id,matchId,eventId:String(record.eventId??'').trim(),sport:String(record.sport??'').trim(),league:String(record.league??'').trim(),boardDate:normalizeEventDate(record.boardDate),eventDate,eventTime:String(record.eventTime??'').trim(),timezone:String(record.timezone??'').trim(),tournament:String(record.competition??record.tournament??'').trim(),playerA,playerB,market,pick:pickLabel,line,sportsbook:String(record.sportsbook??'').trim(),odds,decimal,be,noVig,model,rawEdge:finite(verifiedEdge)?verifiedEdge:model-be,fairOdds:Number(record.modelFairOdds),modelRead:String(record.modelRead??'').trim(),straightBetClassification:String(record.straightBetClassification??'').trim(),passReasonCode:String(record.passReasonCode??'').trim(),compounderEligibility:'ELIGIBLE',modelVersion:String(record.modelVersion??'').trim(),confidence:String(record.straightBetClassification??'').trim(),desc:`${market}: ${pickLabel}${eventLabel?` — ${eventLabel}`:''}`};
+  const classification=String(record.straightBetClassification??record.classification??record.status??'').trim();
+  return {id,marketId:String(record.marketId??'').trim(),matchId,eventId:String(record.eventId??'').trim(),slateId:String(record.slateId??'').trim(),sport:String(record.sport??'').trim(),league:String(record.league??'').trim(),boardDate:normalizeEventDate(record.boardDate),eventDate,eventTime:String(record.eventStart??record.eventTimeDisplay??record.eventTime??'').trim(),timezone:String(record.eventTimeZone??record.timezone??'').trim(),tournament:String(record.competition??record.tournament??'').trim(),playerA,playerB,market,pick:pickLabel,line,sportsbook:String(record.sportsbook??'').trim(),source:String(record.source??'').trim(),odds,decimal,be,noVig,model,rawEdge:finite(verifiedEdge)?verifiedEdge:model-be,fairOdds:Number(record.modelFairOdds),modelRead:String(record.modelRead??'').trim(),straightBetClassification:classification,passReasonCode:String(record.passReasonCode??record.reasonCode??'').trim(),compounderEligibility:'ELIGIBLE',modelVersion:String(record.modelVersion??'').trim(),confidence:classification,desc:`${market}: ${pickLabel}${eventLabel?` — ${eventLabel}`:''}`};
 }
 
 function candidateToLeg(c){
@@ -411,4 +460,4 @@ document.getElementById('modelTrust').addEventListener('change',()=>{compute();i
 stakeEl.addEventListener('input',compute);
 ['bankroll','unitSize','kellyFraction','maxUnits'].forEach(id=>document.getElementById(id).addEventListener('input',compute));
 
-loadState();applyURLParameters();if(!hasURLLegs)legs=legs.filter(l=>l.sourceId);renderCandidates();renderLegs();loadPublishedFeed();
+loadState();loadCachedFeed();applyURLParameters();if(!hasURLLegs)legs=legs.filter(l=>l.sourceId);if(activeFeed)setCandidatePool(candidates);else{renderCandidates();renderLegs();}loadPublishedFeed();
