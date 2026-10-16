@@ -72,3 +72,22 @@ https://dblxlgaming-sudo.github.io/parlay_compunder/?feed=https%3A%2F%2Fexample.
 ## Member site
 
 The member site should link or embed the existing GitHub Pages URL. It should not copy model artifacts or alter the Compounder's feed.
+
+### Site shell integration
+
+The Site agent owns shared navigation and should embed the product with:
+
+```text
+https://dblxlgaming-sudo.github.io/parlay_compunder/?embed=1
+```
+
+`embed=1` removes the Compounder's standalone product header, page background, and outer padding so the shared Site shell can provide its own header, sidebar/mobile navigation, and return links without duplication. The Compounder does not emit or replace Site navigation.
+
+The embedded container should:
+
+- allow the frame to use `width: 100%`;
+- provide enough height for dynamic candidate and combination results, or use the Site's existing responsive iframe-height mechanism;
+- avoid applying a second fixed width around the frame;
+- preserve query parameters such as `market_id`, with `embed=1` joined using `&` when another parameter is already present.
+
+Standalone GitHub Pages remains supported without `embed=1` and displays the Compounder's own compact product heading.

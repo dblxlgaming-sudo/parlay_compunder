@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Parlay Compounder — Triple Threat</title>
+<script>if(new URLSearchParams(location.search).get('embed')==='1')document.documentElement.classList.add('site-embed')</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -178,11 +180,171 @@
     .sizing-grid{grid-template-columns:1fr 1fr;}
   }
   @media (max-width:440px){.grid,.sizing-result{grid-template-columns:1fr;}.sizing-grid{grid-template-columns:1fr 1fr;}}
+
+  /* Triple Threat product surface. Navigation remains owned by the Site shell. */
+  :root{
+    color-scheme:dark;
+    --bg:#020b16;
+    --panel:#06182a;
+    --panel-2:#081d32;
+    --panel-3:#0b2239;
+    --line:#123d60;
+    --line-strong:#17669d;
+    --text:#f7fbff;
+    --sub:#9fc2df;
+    --pos:#00dda4;
+    --neg:#ff5b67;
+    --amber:#ffc62d;
+    --accent:#1687ff;
+    --cyan:#13d8e9;
+  }
+  html{background:var(--bg);}
+  body{
+    background:
+      radial-gradient(circle at 78% -8%,rgba(19,216,233,.10),transparent 28rem),
+      radial-gradient(circle at 18% 0,rgba(22,135,255,.14),transparent 32rem),
+      var(--bg);
+    color:var(--text);
+    padding:clamp(18px,3vw,36px) clamp(12px,3vw,28px) 64px;
+    overflow-x:hidden;
+  }
+  button,input,select,textarea{font:inherit;}
+  button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+  .wrap{width:min(1180px,100%);max-width:none;min-width:0;}
+  header.product-header{
+    position:relative;
+    margin-bottom:18px;
+    padding:clamp(18px,3vw,30px);
+    overflow:hidden;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:linear-gradient(135deg,rgba(8,35,62,.96),rgba(4,20,35,.96));
+    box-shadow:inset 0 1px rgba(255,255,255,.04),0 20px 55px rgba(0,0,0,.22);
+  }
+  header.product-header:after{content:"";position:absolute;inset:auto -8% -70% 48%;height:190%;background:radial-gradient(circle,rgba(19,216,233,.13),transparent 62%);pointer-events:none;}
+  .eyebrow{position:relative;z-index:1;color:var(--cyan);font-weight:700;letter-spacing:.16em;}
+  h1{position:relative;z-index:1;font-size:clamp(26px,4vw,42px);line-height:1.02;letter-spacing:-.035em;}
+  .sub{position:relative;z-index:1;max-width:760px;color:#b5d4ed;font-size:13px;}
+  .import-panel,.section,.stake-row,.card,.miss-panel,.guidance{
+    border-color:var(--line);
+    background:linear-gradient(180deg,rgba(7,27,45,.98),rgba(4,20,33,.98));
+    box-shadow:inset 0 1px rgba(255,255,255,.025);
+  }
+  .import-panel{border-left:3px solid var(--cyan);padding:12px 14px;}
+  .import-panel summary{color:#d9efff;font-weight:700;}
+  .import-status{display:inline-flex;align-items:center;min-height:30px;color:#b5d4ed;overflow-wrap:anywhere;}
+  .section{margin-top:14px;padding:clamp(14px,2vw,18px);border-radius:12px;}
+  .section-head{margin-bottom:12px;}
+  .section-title{font-size:15px;color:#f9fcff;}
+  .section-copy{color:var(--sub);}
+  .tiny{color:#8fb7d6;line-height:1.45;}
+  .controls{gap:8px;margin:10px 0;}
+  .control{min-width:0;}
+  .control label,.field label,.card .label,.size-box .label,.miss-title,.miss-legs .mlabel{color:#8fb7d6;font-weight:600;}
+  .control input,.control select,.field input,.stake-row input{
+    border-color:#164d77;
+    background:#041525;
+    color:#f7fbff;
+    min-height:36px;
+  }
+  .control input:hover,.control select:hover,.field input:hover,.stake-row input:hover{border-color:var(--line-strong);}
+  select{color-scheme:dark;}
+  .primary{
+    border:1px solid #3097ff;
+    background:linear-gradient(180deg,#208eff,#075ee9);
+    color:#fff;
+    box-shadow:0 8px 22px rgba(0,110,255,.22);
+  }
+  .primary:hover{filter:brightness(1.08);}
+  .secondary{border-color:#164d77;background:#06182a;color:#eef7ff;}
+  .secondary:hover{border-color:var(--cyan);color:var(--cyan);background:#08213a;}
+  button:disabled{opacity:.42;cursor:not-allowed;}
+  .candidate-list{gap:8px;max-height:340px;padding-right:2px;scrollbar-color:#17669d #041525;}
+  .candidate{min-width:0;border-color:#123d60;background:#071b2d;border-radius:9px;padding:10px;}
+  .candidate:hover{border-color:#17669d;background:#09243c;}
+  .candidate input{accent-color:var(--accent);}
+  .candidate-name,.suggestion-title{overflow-wrap:anywhere;}
+  .candidate-meta,.suggestion-meta{display:block;color:#8fb7d6;line-height:1.45;}
+  .candidate-edge{font-weight:700;color:var(--pos);white-space:nowrap;}
+  .suggestion{min-width:0;border-color:#123d60;background:#071b2d;border-radius:9px;padding:10px;}
+  .suggestion:hover{border-color:#17669d;}
+  .grade{color:var(--cyan);}
+  .suggestion-stat{color:#cfe8f8;}
+  .legs{margin:14px 0 10px;}
+  .leg{min-width:0;border-color:#123d60;background:linear-gradient(180deg,#071b2d,#051522);border-radius:10px;padding:11px 12px;}
+  .field{min-width:0;}
+  .field input:disabled{opacity:1;color:#c7dded;}
+  .stake-row{margin:14px 0 4px;padding:10px 14px;}
+  .size-box{border-color:#123d60;background:#071b2d;}
+  .size-box .value{color:var(--pos);}
+  .results{margin-top:18px;}
+  .card{padding:14px;border-radius:10px;min-width:0;}
+  .card .val{font-size:clamp(20px,3vw,26px);font-weight:700;}
+  .card .note{color:#8fb7d6;}
+  .miss-panel{padding:16px;}
+  .bar-track{height:8px;border-color:#123d60;background:#03101d;}
+  .mleg-row{border-bottom-color:#10324e;gap:16px;}
+  .mleg-row .who{min-width:0;overflow-wrap:anywhere;}
+  .mleg-row span.pct{color:var(--cyan);white-space:nowrap;}
+  .guidance-badge{background:var(--cyan);color:#03111f;}
+  .impact-table td{border-bottom-color:#10324e;}
+  .caveat{border-color:#5a461b;background:linear-gradient(90deg,#16150f,#0c151c);color:#d9c58c;}
+  .caveat b{color:var(--amber);}
+  .empty{border-color:#255374;background:rgba(3,17,31,.4);color:#8fb7d6;}
+  .pos{color:var(--pos)!important;}
+  .error,.neg{color:var(--neg)!important;}
+  .amber{color:var(--amber)!important;}
+  .site-embed{background:transparent;}
+  .site-embed body{min-height:0;background:transparent;padding:0;}
+  .site-embed header.product-header{display:none;}
+  .site-embed .wrap{width:100%;}
+  .site-embed .import-panel{margin-top:0;}
+  @media (max-width:900px){
+    .leg{grid-template-columns:minmax(0,1fr) 105px 105px 135px 32px;gap:8px;}
+    .suggestion{grid-template-columns:58px minmax(0,1fr) 82px 92px;}
+  }
+  @media (max-width:760px){
+    body{padding:14px 10px 48px;}
+    header.product-header{padding:18px;margin-bottom:12px;}
+    .import-actions,.section-head,.stake-row{align-items:stretch;}
+    .import-actions{flex-wrap:wrap;}
+    .import-status{flex:1 1 220px;}
+    .section-head{flex-direction:column;gap:6px;}
+    .controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;}
+    .control,.control input,.control select,.controls button{width:100%!important;max-width:100%;}
+    .control[style]{min-width:0;}
+    .candidate-list{grid-template-columns:1fr;max-height:420px;}
+    .leg{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+    .field.desc{grid-column:1/-1;}
+    .rm{grid-column:2;justify-self:end;}
+    .suggestion{grid-template-columns:52px minmax(0,1fr);gap:8px;}
+    .suggestion-stat{text-align:left;}
+    .suggestion button{width:100%;}
+    .grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .sizing-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .bar-row{grid-template-columns:105px minmax(0,1fr) 52px;gap:7px;}
+    .miss-panel,.guidance{padding:14px;}
+    .miss-legs{overflow-x:auto;}
+  }
+  @media (max-width:440px){
+    body{padding-inline:8px;}
+    h1{font-size:25px;}
+    .controls,.grid,.sizing-grid,.sizing-result{grid-template-columns:1fr;}
+    .candidate{grid-template-columns:20px minmax(0,1fr);}
+    .candidate-edge{grid-column:2;text-align:left;}
+    .leg{grid-template-columns:1fr;}
+    .field.desc,.rm{grid-column:1;}
+    .rm{justify-self:end;}
+    .bar-row{grid-template-columns:1fr 48px;}
+    .bar-row .bl{grid-column:1/-1;}
+    .mleg-row{display:grid;gap:4px;}
+    .mleg-row span.pct{white-space:normal;}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <header class="product-header">
     <div class="eyebrow">Triple Threat / Bet Sizing</div>
     <h1>Parlay Builder & Combination Lab</h1>
     <div class="sub">Build your own 2–6 leg slip from model-produced market artifacts and compare ranked combinations. Every label is driven by visible probability, edge, fragility, and correlation rules.</div>
